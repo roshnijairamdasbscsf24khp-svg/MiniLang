@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MiniLang Compiler</title>
+<style>
+:root{--bg:#06080c;--p:#0e121a;--p2:#151b26;--ln:#222b3a;--tx:#eef2f8;--mu:#7f8b9d;--ac:#ffb020;--gr:#3ddc97;--rd:#ff5d6c;--bl:#4cc2ff;--pk:#ff7ab6;--sd:#ffd166;--tl:#2ee6d6;--or:#ff8a3d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,Segoe UI,sans-serif;height:100vh;display:flex;flex-direction:column}
+header{display:flex;gap:10px;align-items:center;padding:10px 16px;background:var(--p);border-bottom:1px solid var(--ln);flex-wrap:wrap}
+h1{font-size:18px;margin:0 8px 0 0;color:var(--ac)}button,select{background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:6px 11px;font:inherit;cursor:pointer}
+button:hover,select:hover{border-color:var(--ac)}button.on{background:var(--ac);color:#1a1203;border-color:var(--ac);font-weight:700}
+main{flex:1;display:flex;min-height:0}#ed{width:38%;min-width:260px;display:flex;flex-direction:column;padding:10px;border-right:1px solid var(--ln)}
+textarea{flex:1;background:var(--p);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:10px;font:13px Consolas,monospace;resize:none;tab-size:4}
+#pane{flex:1;display:flex;flex-direction:column;min-width:0}#tabs{display:flex;gap:2px;flex-wrap:wrap;padding:8px 8px 0}
+.tab{border-radius:6px 6px 0 0;border-bottom:2px solid transparent;background:none}.tab.on{background:var(--p);border-bottom-color:var(--ac);color:var(--ac)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mu)}.ok{background:var(--gr)}.fail{background:var(--rd)}.skipped{background:var(--ln)}
+#out{flex:1;overflow:auto;padding:12px;background:var(--p);margin:0 8px 8px;border-radius:0 6px 6px 6px}
+table{border-collapse:collapse;width:100%;font:13px Consolas,monospace}th{color:var(--mu);text-align:left;font:600 12px system-ui}td,th{padding:4px 10px;border-bottom:1px solid var(--ln)}
+pre{margin:0;font:13px Consolas,monospace;white-space:pre-wrap}.cols{display:flex;gap:12px}.cols>div{flex:1;background:var(--bg);padding:10px;border-radius:6px}
+.mu{color:var(--mu)}.err{color:var(--rd)}.fx{color:var(--gr)}.k{color:var(--ac)}.cards{display:flex;gap:8px;margin:8px 0}.card{flex:1;background:var(--bg);border:1px solid var(--ln);border-radius:8px;padding:10px;cursor:pointer}
+.card.on{border:2px solid var(--ac)}.card b{display:block;font-size:22px;margin:4px 0}.opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.row{display:flex;gap:6px;margin:8px 0;align-items:center}.ln{width:26px;color:var(--mu);font-size:12px}
+.chip{padding:3px 9px;border-radius:7px;border:1px solid;font:700 13px Consolas,monospace;animation:pop .35s both}.ins{border-style:dashed;color:var(--ac);border-color:var(--ac);background:#3a2a0c}
+.skipped,.deleted{color:var(--mu);border-color:#6b2a33;background:#2a1217;text-decoration:line-through}.replaced{color:var(--gr);border-color:var(--gr);background:#0f2e22}.unread{opacity:.4;border-style:dotted}
+.chip.e{box-shadow:0 0 0 2px var(--rd)}.keyword{color:var(--ac)}.literal{color:var(--bl)}.identifier{color:var(--tl)}.operator{color:var(--sd)}.punct{color:var(--mu)}
+@keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}.nd{animation:pop .4s both;transform-box:fill-box;transform-origin:center;cursor:pointer}
+.eg{animation:fade .5s both}@keyframes fade{from{opacity:0}to{opacity:1}}#ld{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:9}
+svg text{font:12px Consolas,monospace}
+@media(max-width:800px){main{flex-direction:column}#ed{width:100%;height:36%}}
+</style></head><body>
+<div id="ld"><h1>MiniLang</h1><div class="mu">Loading the compiler (Python in your browser)…</div></div>
+<header><h1>MiniLang Compiler</h1><select id="sm"></select>
+<select id="st"><option value="phrase">Phrase-level repair</option><option value="panic">Panic mode</option><option value="stop">Stop at first error</option></select>
+<button id="go" class="on">Compile</button><span class="mu" id="sb"></span></header>
+<main><section id="ed"><textarea id="src" spellcheck="false"></textarea></section>
+<section id="pane"><nav id="tabs"></nav><div id="out"></div></section></main>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const FILES=["__init__","errors","tokens","lexer","ast_nodes","parser","semantic","runtime","codegen","optimizer","cfg","interpreter","compiler","recovery","samples"];
+const TABS=[["tokens","Tokens","lexical"],["tree","Syntax tree","syntax"],["sym","Symbol table","semantic"],["code","Intermediate code","codegen"],["flow","Flow graph","codegen"],["rec","Recovery",null],["err","Errors",null],["run","Run","codegen"]];
+const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const KC={Program:"--ac",VarDecl:"--gr",Assign:"--bl",Print:"--pk",If:"--or",While:"--or",Binary:"--sd",Unary:"--sd",Variable:"--tl",Literal:"--tx",Block:"--mu"};
+let py,bridge,D,tab="tree",strat="phrase",opts={keywords:true,insert:true,delete:true,operators:true,compare_op:"=="},pick="phrase";
+async function init(){py=await loadPyodide();py.FS.mkdir("minilang");
+ for(const f of FILES)py.FS.writeFile("minilang/"+f+".py",await(await fetch("minilang/"+f+".py")).text());
+ py.FS.writeFile("bridge.py",await(await fetch("bridge.py")).text());bridge=py.pyimport("bridge");
+ const S=JSON.parse(bridge.samples());$("sm").innerHTML=S.map((s,i)=>`<option value="${i}">${esc(s[0])}</option>`).join("");
+ $("sm").onchange=()=>{$("src").value=S[$("sm").value][1];run()};$("src").value=S[0][1];$("ld").remove();run()}
+function run(){strat=$("st").value;pick=strat;const t=performance.now();D=JSON.parse(bridge.analyze($("src").value,strat,JSON.stringify(opts)));
+ $("sb").textContent=D.errors.length?D.errors.length+" error(s)":"compiled without errors";$("sb").className=D.errors.length?"err":"fx";draw()}
+function draw(){$("tabs").innerHTML=TABS.map(t=>`<button class="tab ${t[0]==tab?"on":""}" data-t="${t[0]}"><span class="dot ${t[2]?D.stages[t[2]]:(D.errors.length?"fail":"")}"></span>${t[1]}</button>`).join("");
+ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{tab=b.dataset.t;draw()});$("out").innerHTML="";R[tab]($("out"))}
+const tbl=(h,rows)=>`<table><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</table>`;
+const R={
+tokens:o=>o.innerHTML=tbl(["Type","Lexeme","Line","Col"],D.tokens.map(t=>[`<span class="${t[4]}">${t[0]}</span>`,esc(t[1]),t[2],t[3]])),
+sym:o=>o.innerHTML=D.symbols.length?tbl(["Name","Type","Line","Scope","Has value","Uses"],D.symbols.map(s=>[s[0],s[1],s[2],s[3],s[4]?"yes":"no",s[5]])):'<span class="mu">No symbol table yet (fix earlier errors).</span>',
+code:o=>{o.innerHTML=D.tac.length||D.opt.length?`<div class="cols"><div><b class="mu">ORIGINAL (${D.tac.length})</b><pre>${esc(D.tac.join("\n"))}</pre></div><div><b class="mu">OPTIMIZED (${D.opt.length})</b><pre>${esc(D.opt.join("\n"))}</pre></div></div><p class="mu">folded ${D.stats.folded||0} · propagated ${D.stats.propagated||0} · branches ${D.stats.branches||0} · removed ${D.stats.removed||0}</p>`:'<span class="mu">Not generated (fix the errors first).</span>'},
+err:o=>o.innerHTML=D.errors.length?tbl(["Stage","Line","Col","Message","Recovery"],D.errors.map(e=>[e[0],e[1],e[2],esc(e[3]),`<span class="fx">${esc(e[4])}</span>`])):'<span class="fx">No errors.</span>',
+run:o=>o.innerHTML=D.run?`<pre>${esc(D.run.out.join("\n"))||'<span class="mu">(no output)</span>'}</pre>${D.run.err?`<p class="err">${esc(D.run.err)}</p>`:""}`:'<span class="mu">Nothing to run (fix the errors first).</span>',
+tree:o=>{if(!D.ast){o.innerHTML='<span class="mu">No tree (lexical errors).</span>';return}
+ const L=n=>{n.w=Math.max(n.n.length,(n.d||"").length)*7.4+22;n.h=n.d?40:26;n.c.forEach(L);n.cw=n.c.reduce((a,k)=>a+k.sw,0)+10*Math.max(0,n.c.length-1);n.sw=Math.max(n.w,n.cw)};
+ const P=(n,x,y)=>{n.x=x+n.sw/2;n.y=y;let cx=x+(n.sw-n.cw)/2;n.c.forEach(k=>{P(k,cx,y+80);cx+=k.sw+10})};L(D.ast);P(D.ast,10,10);
+ let e="",b="";const W=D.ast.sw+20;let H=0;const V=n=>{H=Math.max(H,n.y+n.h);const col=`var(${KC[n.n]||"--mu"})`,dl=n.o*70+"ms";
+  n.c.forEach(k=>{const m=(n.y+n.h+k.y)/2;e+=`<path class="eg" style="animation-delay:${dl}" d="M${n.x} ${n.y+n.h}V${m}H${k.x}V${k.y}" stroke="${col}" fill="none" opacity=".5"/>`;V(k)});
+  b+=`<g class="nd" style="animation-delay:${dl}" data-l="${n.l}"><rect x="${n.x-n.w/2}" y="${n.y}" width="${n.w}" height="${n.h}" rx="7" fill="#0b0e14" stroke="${col}"/><text x="${n.x}" y="${n.y+(n.d?16:17)}" text-anchor="middle" fill="${col}" font-weight="700">${esc(n.n)}</text>${n.d?`<text x="${n.x}" y="${n.y+32}" text-anchor="middle" fill="#eef2f8">${esc(n.d)}</text>`:""}</g>`};V(D.ast);
+ o.innerHTML=`<div class="mu" style="margin-bottom:6px">Click a node to jump to its line. The tree builds itself node by node.</div><button id="rp">Replay</button><div style="overflow:auto"><svg width="${W}" height="${H+20}">${e}${b}</svg></div>`;
+ $("rp").onclick=()=>draw();o.querySelectorAll(".nd").forEach(g=>g.onclick=()=>{const l=+g.dataset.l;if(!l)return;const t=$("src"),ls=t.value.split("\n");let s=0;for(let i=0;i<l-1;i++)s+=ls[i].length+1;t.focus();t.setSelectionRange(s,s+ls[l-1].length)})},
+flow:o=>{if(!D.cfg.length){o.innerHTML='<span class="mu">No flow graph yet.</span>';return}const Wd=250;let y=20,pos={},s="",lanes=0;
+ D.cfg.forEach(b=>{const h=b.code.length*17+14;pos[b.id]=[y,h];y+=h+38});
+ D.cfg.forEach(b=>{const[by,bh]=pos[b.id];s+=`<rect x="40" y="${by}" width="${Wd}" height="${bh}" rx="6" fill="#0b0e14" stroke="#222b3a"/><text x="30" y="${by+14}" text-anchor="end" fill="#7f8b9d">B${b.id}</text>`+b.code.map((c,i)=>`<text x="52" y="${by+20+i*17}" fill="${c.endsWith(":")?"#ffb020":/^(goto|if)/.test(c)?"#ffd166":"#eef2f8"}">${esc(c)}</text>`).join("")});
+ D.cfg.forEach(b=>{const[by,bh]=pos[b.id];b.succ.forEach(([t,k])=>{const c=k=="true"?"#3ddc97":k=="false"?"#ff5d6c":"#7f8b9d",[ty]=pos[t];
+  if(t==b.id+1)s+=`<path d="M165 ${by+bh}V${ty}" stroke="${c}" fill="none" stroke-width="2" marker-end="url(#a)"/>`;else{const x=Wd+60+lanes++*12;s+=`<path d="M${Wd+40} ${by+bh-8}H${x}V${ty+12}H${Wd+42}" stroke="${c}" fill="none" stroke-width="2" marker-end="url(#a)"/>`}})});
+ o.innerHTML=`<div class="mu">green = true · red = false · grey = fall through / jump</div><svg width="${Wd+130+lanes*12}" height="${y}"><defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0L7 3L0 6z" fill="#aab"/></marker></defs>${s}</svg>`},
+rec:o=>{const T=(t,on,f)=>`<button class="${on?"on":""}" data-f="${f}">${on?"✓ ":""}${t}</button>`;
+ if(!D.compare){o.innerHTML='<span class="mu">Fix the lexical errors first – the parser only runs on valid tokens.</span>';return}
+ const c=D.compare.find(x=>x.key==pick),i=D.compare.indexOf(c);
+ o.innerHTML=`<div class="opts"><b>Phrase-level repairs:</b>${T("fix keywords",opts.keywords,"keywords")}${T("insert ; ) ( =",opts.insert,"insert")}${T("delete stray ; ) }",opts.delete,"delete")}${T("fix = / ==",opts.operators,"operators")}</div>
+ <div class="opts"><span>'=' inside a condition becomes:</span>${["==","!=","<=",">=","<",">"].map(p=>T(esc(p),opts.compare_op==p,"op:"+p)).join("")}</div>
+ <div class="cards">${D.compare.map(x=>`<div class="card ${x.key==pick?"on":""}" data-k="${x.key}"><b style="font-size:14px">${x.name}</b><b class="${x.errors?"err":"fx"}">${x.errors} error${x.errors==1?"":"s"}</b>${x.stmts} statements kept · ${x.nodes} nodes<br><span class="mu">skip ${x.skipped} · add ${x.inserted} · fix ${x.replaced}</span></div>`).join("")}</div>
+ <div class="chips">${chips(c.chips)}</div><h4 class="mu">Log (${c.name})</h4>${c.log.map(l=>`<div><span class="mu">line ${l[0]}, col ${l[1]}</span> ${esc(l[2])}${l[3]?`<div class="fx">&nbsp;&nbsp;→ ${esc(l[3])}</div>`:""}</div>`).join("")||'<span class="mu">No syntax errors.</span>'}`;
+ o.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{const f=b.dataset.f;if(f.startsWith("op:"))opts.compare_op=f.slice(3);else opts[f]=!opts[f];run()});
+ o.querySelectorAll(".card").forEach(d=>d.onclick=()=>{$("st").value=d.dataset.k;run()})}};
+function chips(items){const rows={};items.forEach((it,i)=>(rows[it.row]=rows[it.row]||[]).push([it,i]));
+ return Object.keys(rows).map(r=>`<div class="row"><span class="ln">${r}</span>${rows[r].map(([it,i])=>{const cl=it.kind=="ins"?"ins":it.state!="ok"?it.state:it.cat;
+  return`<span class="chip ${cl} ${it.err?"e":""}" style="animation-delay:${i*45}ms">${esc(it.new?it.text+" → "+it.new.replace(/'/g,""):it.text)}</span>`}).join("")}</div>`).join("")}
+$("go").onclick=run;$("st").onchange=run;$("src").addEventListener("keydown",e=>{if(e.key=="Tab"){e.preventDefault();const t=e.target,s=t.selectionStart;t.setRangeText("    ",s,t.selectionEnd,"end")}});
+let tm;$("src").addEventListener("input",()=>{clearTimeout(tm);tm=setTimeout(()=>bridge&&run(),600)});
+init().catch(e=>{$("ld").innerHTML='<h1>Could not load</h1><div class="err">'+esc(e)+'</div><div class="mu">Open the page through a web server (not file://) and check your internet connection.</div>'});
+</script></body></html>

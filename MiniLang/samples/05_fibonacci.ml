@@ -1,0 +1,10 @@
+int a = 0;
+int b = 1;
+int count = 0;
+while (count < 10) {
+    print(a);
+    int next = a + b;
+    a = b;
+    b = next;
+    count = count + 1;
+}
